@@ -94,9 +94,9 @@ def animate_trajectory(x, y, t, v0, angle_deg, H, R):
                 fontsize=9, color='red')
 
     # Animated elements
-    trail_line,      = ax.plot([], [], color='royalblue', linewidth=2.5, label='Path')
-    projectile_dot,  = ax.plot([], [], 'o', color='darkorange',
-                                markersize=12, label='Projectile', zorder=5)
+    trail_line,     = ax.plot([], [], color='royalblue', linewidth=2.5, label='Path')
+    projectile_dot, = ax.plot([], [], 'o', color='darkorange',
+                               markersize=12, label='Projectile', zorder=5)
 
     # Live time counter
     time_text = ax.text(0.02, 0.95, '', transform=ax.transAxes,
@@ -184,9 +184,9 @@ def run_test_cases():
         ax.plot(x, y, color=colors[i], linewidth=2.2,
                 label=f'θ = {angle}°  |  R = {R:.2f} m  |  H = {H:.2f} m')
 
-    # Validation note
-    _, _, T30, H30, R30 = compute_parameters(50, 30), *compute_parameters(50, 30)[2:]
-    _, _, T60, H60, R60 = compute_parameters(50, 60), *compute_parameters(50, 60)[2:]
+    # Validation note — fixed unpacking (was broken with splat operator)
+    _, _, T30, H30, R30 = compute_parameters(50, 30)
+    _, _, T60, H60, R60 = compute_parameters(50, 60)
     print("\n" + "-" * 50)
     print(f"  ✅ Range @ 30°  =  {R30:.4f} m")
     print(f"  ✅ Range @ 60°  =  {R60:.4f} m")
