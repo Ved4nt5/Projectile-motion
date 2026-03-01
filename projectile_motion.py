@@ -10,9 +10,10 @@
 # =============================================================================
 
 import numpy as np
+import matplotlib
+matplotlib.use('TkAgg')          # Use TkAgg backend for interactive window
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-import matplotlib.patches as mpatches
 
 # -----------------------------------------------------------------------------
 # CONSTANTS
@@ -21,7 +22,6 @@ g = 9.81  # Acceleration due to gravity (m/s²)
 
 # =============================================================================
 # FUNCTION: get_user_input()
-# Prompts the user for initial velocity and launch angle.
 # =============================================================================
 def get_user_input():
     print("=" * 50)
@@ -33,8 +33,6 @@ def get_user_input():
 
 # =============================================================================
 # FUNCTION: compute_parameters(v0, angle_deg)
-# Converts angle to radians, computes velocity components,
-# time of flight, maximum height, and range.
 # =============================================================================
 def compute_parameters(v0, angle_deg):
     theta = np.radians(angle_deg)
@@ -47,7 +45,6 @@ def compute_parameters(v0, angle_deg):
 
 # =============================================================================
 # FUNCTION: compute_trajectory(vx, vy, T)
-# Generates 200 time points and computes x(t) and y(t) arrays.
 # =============================================================================
 def compute_trajectory(vx, vy, T):
     t = np.linspace(0, T, 200)
@@ -57,7 +54,6 @@ def compute_trajectory(vx, vy, T):
 
 # =============================================================================
 # FUNCTION: print_results(v0, angle_deg, T, H, R)
-# Prints the computed parameters to the console in formatted style.
 # =============================================================================
 def print_results(v0, angle_deg, T, H, R):
     print("\n" + "=" * 50)
@@ -78,7 +74,7 @@ def print_results(v0, angle_deg, T, H, R):
 def animate_trajectory(x, y, t, v0, angle_deg, H, R):
     fig, ax = plt.subplots(figsize=(10, 5))
 
-    # Set axis limits with a little padding
+    # Set axis limits with padding
     ax.set_xlim(0, x[-1] * 1.05)
     ax.set_ylim(0, max(y) * 1.25)
 
@@ -86,11 +82,10 @@ def animate_trajectory(x, y, t, v0, angle_deg, H, R):
     ax.plot(x, y, color='royalblue', linewidth=1.5, linestyle='--', alpha=0.3,
             label='Full trajectory (reference)')
 
-    # Mark launch and landing points
+    # Mark launch, peak, and landing points
     ax.plot(0, 0, 'go', markersize=9, label='Launch (0, 0)')
     ax.plot(x[-1], 0, 'bs', markersize=9, label=f'Landing  R = {R:.2f} m')
 
-    # Mark the peak
     peak_idx = np.argmax(y)
     ax.plot(x[peak_idx], y[peak_idx], 'r^', markersize=9,
             label=f'Max Height  H = {H:.2f} m')
@@ -99,11 +94,11 @@ def animate_trajectory(x, y, t, v0, angle_deg, H, R):
                 fontsize=9, color='red')
 
     # Animated elements
-    trail_line, = ax.plot([], [], color='royalblue', linewidth=2.5, label='Path')
-    projectile_dot, = ax.plot([], [], 'o', color='darkorange',
-                              markersize=12, label='Projectile', zorder=5)
+    trail_line,      = ax.plot([], [], color='royalblue', linewidth=2.5, label='Path')
+    projectile_dot,  = ax.plot([], [], 'o', color='darkorange',
+                                markersize=12, label='Projectile', zorder=5)
 
-    # Time label in the upper-left corner
+    # Live time counter
     time_text = ax.text(0.02, 0.95, '', transform=ax.transAxes,
                         fontsize=10, color='dimgray', va='top')
 
@@ -115,8 +110,10 @@ def animate_trajectory(x, y, t, v0, angle_deg, H, R):
     ax.legend(fontsize=9, loc='upper right')
     ax.grid(True, linestyle='--', alpha=0.6)
 
+    plt.tight_layout()
+
     # -------------------------------------------------------------------------
-    # INIT: clear the animated objects
+    # INIT: clear animated objects
     # -------------------------------------------------------------------------
     def init():
         trail_line.set_data([], [])
@@ -125,7 +122,7 @@ def animate_trajectory(x, y, t, v0, angle_deg, H, R):
         return trail_line, projectile_dot, time_text
 
     # -------------------------------------------------------------------------
-    # UPDATE: called for each frame i
+    # UPDATE: draw each frame
     # -------------------------------------------------------------------------
     def update(i):
         trail_line.set_data(x[:i+1], y[:i+1])
@@ -133,30 +130,33 @@ def animate_trajectory(x, y, t, v0, angle_deg, H, R):
         time_text.set_text(f'Time: {t[i]:.2f} s')
         return trail_line, projectile_dot, time_text
 
-    # interval in ms between frames (total ~3 s for 200 frames → 15 ms each)
+    # Keep a reference to ani — required to prevent garbage collection
     ani = animation.FuncAnimation(
         fig, update,
         frames=len(x),
         init_func=init,
-        interval=15,
+        interval=20,       # ms between frames
         blit=True,
         repeat=False
     )
 
-    plt.tight_layout()
-
-    # Save as GIF (requires Pillow) — comment out if not needed
-    try:
-        ani.save('projectile_animation.gif', writer='pillow', fps=60)
-        print("\n  [INFO] Animation saved as 'projectile_animation.gif'")
-    except Exception as e:
-        print(f"\n  [WARNING] Could not save GIF: {e}")
-
+    # Show the live animation window FIRST
     plt.show()
+
+    # Save as GIF after window closes (requires Pillow: pip install pillow)
+    save = input("\n  Save animation as GIF? (y/n): ").strip().lower()
+    if save == 'y':
+        try:
+            print("  [INFO] Saving animation, please wait...")
+            ani.save('projectile_animation.gif', writer='pillow', fps=50)
+            print("  [INFO] Animation saved as 'projectile_animation.gif'")
+        except Exception as e:
+            print(f"  [WARNING] Could not save GIF: {e}")
+
+    return ani   # return to prevent garbage collection if called from main
 
 # =============================================================================
 # FUNCTION: run_test_cases()
-# Runs predefined test cases for validation (static multi-trajectory plot).
 # =============================================================================
 def run_test_cases():
     print("\n" + "=" * 50)
@@ -211,20 +211,13 @@ def run_test_cases():
 # MAIN — Entry Point
 # =============================================================================
 def main():
-    # --- Interactive Simulation ---
     v0, angle_deg = get_user_input()
-
-    # Compute parameters
     vx, vy, T, H, R = compute_parameters(v0, angle_deg)
-
-    # Print results
     print_results(v0, angle_deg, T, H, R)
 
-    # Compute trajectory and show animation
     t, x, y = compute_trajectory(vx, vy, T)
-    animate_trajectory(x, y, t, v0, angle_deg, H, R)
+    ani = animate_trajectory(x, y, t, v0, angle_deg, H, R)  # keep reference
 
-    # --- Run Test Cases ---
     run_test = input("\n  Run predefined test cases? (y/n): ").strip().lower()
     if run_test == 'y':
         run_test_cases()
