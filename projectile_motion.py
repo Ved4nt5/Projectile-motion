@@ -1,0 +1,209 @@
+# =============================================================================
+# PROJECTILE MOTION SIMULATION
+# =============================================================================
+# Author      : Ved4nt5
+# Date        : March 2026
+# Language    : Python 3.10
+# Libraries   : NumPy, Matplotlib
+# Description : Simulates projectile motion, computes key parameters,
+#               and plots the 2D parabolic trajectory.
+# =============================================================================
+
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+
+# -----------------------------------------------------------------------------
+# CONSTANTS
+# -----------------------------------------------------------------------------
+g = 9.81  # Acceleration due to gravity (m/s²)
+
+# =============================================================================
+# FUNCTION: get_user_input()
+# Prompts the user for initial velocity and launch angle.
+# =============================================================================
+def get_user_input():
+    print("=" * 50)
+    print("      PROJECTILE MOTION SIMULATION")
+    print("=" * 50)
+    v0    = float(input("Enter Initial Velocity (m/s)  : "))
+    angle = float(input("Enter Launch Angle (degrees)  : "))
+    return v0, angle
+
+# =============================================================================
+# FUNCTION: compute_parameters(v0, angle_deg)
+# Converts angle to radians, computes velocity components,
+# time of flight, maximum height, and range.
+# =============================================================================
+def compute_parameters(v0, angle_deg):
+    # Convert angle from degrees to radians
+    theta = np.radians(angle_deg)
+
+    # Velocity components
+    vx = v0 * np.cos(theta)   # Horizontal component (constant)
+    vy = v0 * np.sin(theta)   # Vertical component (changes with gravity)
+
+    # Time of flight: T = (2 * v0 * sin θ) / g
+    T = (2 * v0 * np.sin(theta)) / g
+
+    # Maximum height: H = (v0² * sin²θ) / (2g)
+    H = (v0**2 * np.sin(theta)**2) / (2 * g)
+
+    # Horizontal range: R = (v0² * sin 2θ) / g
+    R = (v0**2 * np.sin(2 * theta)) / g
+
+    return vx, vy, T, H, R
+
+# =============================================================================
+# FUNCTION: compute_trajectory(vx, vy, T)
+# Generates 200 time points and computes x(t) and y(t) arrays.
+# =============================================================================
+def compute_trajectory(vx, vy, T):
+    # Generate 200 evenly spaced time points from 0 to T
+    t = np.linspace(0, T, 200)
+
+    # Horizontal position: x(t) = vx * t
+    x = vx * t
+
+    # Vertical position: y(t) = vy * t - (1/2) * g * t²
+    y = vy * t - 0.5 * g * t**2
+
+    return t, x, y
+
+# =============================================================================
+# FUNCTION: print_results(v0, angle_deg, T, H, R)
+# Prints the computed parameters to the console in formatted style.
+# =============================================================================
+def print_results(v0, angle_deg, T, H, R):
+    print("\n" + "=" * 50)
+    print("         SIMULATION RESULTS")
+    print("=" * 50)
+    print(f"  Initial Velocity   :  {v0:.2f} m/s")
+    print(f"  Launch Angle       :  {angle_deg:.2f}°")
+    print("-" * 50)
+    print(f"  Time of Flight     :  {T:.4f} s")
+    print(f"  Maximum Height     :  {H:.4f} m")
+    print(f"  Horizontal Range   :  {R:.4f} m")
+    print("=" * 50)
+
+# =============================================================================
+# FUNCTION: plot_trajectory(x, y, angle_deg, H, R)
+# Plots the 2D parabolic trajectory using Matplotlib.
+# =============================================================================
+def plot_trajectory(x, y, v0, angle_deg, H, R):
+    fig, ax = plt.subplots(figsize=(10, 5))
+
+    # Plot the trajectory curve
+    ax.plot(x, y, color='royalblue', linewidth=2.5, label=f'θ = {angle_deg}°, v₀ = {v0} m/s')
+
+    # Mark the launch point
+    ax.plot(0, 0, 'go', markersize=10, label='Launch Point (0, 0)')
+
+    # Mark the peak (maximum height)
+    peak_idx = np.argmax(y)
+    ax.plot(x[peak_idx], y[peak_idx], 'r^', markersize=10, label=f'Max Height = {H:.2f} m')
+    ax.annotate(f'  H = {H:.2f} m',
+                xy=(x[peak_idx], y[peak_idx]),
+                fontsize=9, color='red')
+
+    # Mark the landing point
+    ax.plot(x[-1], 0, 'bs', markersize=10, label=f'Range = {R:.2f} m')
+    ax.annotate(f'  R = {R:.2f} m',
+                xy=(x[-1], 0),
+                fontsize=9, color='blue')
+
+    # Fill area under trajectory
+    ax.fill_between(x, y, alpha=0.08, color='royalblue')
+
+    # Labels and formatting
+    ax.set_title(f'Projectile Motion Trajectory\n(v₀ = {v0} m/s, θ = {angle_deg}°)',
+                 fontsize=14, fontweight='bold')
+    ax.set_xlabel('Horizontal Distance (m)', fontsize=12)
+    ax.set_ylabel('Vertical Height (m)', fontsize=12)
+    ax.legend(fontsize=10, loc='upper right')
+    ax.grid(True, linestyle='--', alpha=0.6)
+    ax.set_xlim(left=0)
+    ax.set_ylim(bottom=0)
+
+    plt.tight_layout()
+    plt.savefig('trajectory.png', dpi=150, bbox_inches='tight')
+    plt.show()
+    print("\n  [INFO] Plot saved as 'trajectory.png'")
+
+# =============================================================================
+# FUNCTION: run_test_cases()
+# Runs predefined test cases for validation.
+# =============================================================================
+def run_test_cases():
+    print("\n" + "=" * 50)
+    print("         TEST CASES — VALIDATION")
+    print("=" * 50)
+
+    test_cases = [
+        (50, 45, "Maximum Range"),
+        (50, 30, "Complementary Angle A"),
+        (50, 60, "Complementary Angle B"),
+    ]
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+    colors = ['royalblue', 'tomato', 'seagreen']
+
+    for i, (v0, angle, label) in enumerate(test_cases):
+        vx, vy, T, H, R = compute_parameters(v0, angle)
+        t, x, y = compute_trajectory(vx, vy, T)
+
+        print(f"\n  [{label}]  v₀ = {v0} m/s,  θ = {angle}°")
+        print(f"  Time of Flight   : {T:.4f} s")
+        print(f"  Maximum Height   : {H:.4f} m")
+        print(f"  Horizontal Range : {R:.4f} m")
+
+        ax.plot(x, y, color=colors[i], linewidth=2.2,
+                label=f'θ = {angle}°  |  R = {R:.2f} m  |  H = {H:.2f} m')
+
+    # Validation note
+    _, _, T30, H30, R30 = compute_parameters(50, 30), *compute_parameters(50, 30)[2:]
+    _, _, T60, H60, R60 = compute_parameters(50, 60), *compute_parameters(50, 60)[2:]
+    print("\n" + "-" * 50)
+    print(f"  ✅ Range @ 30°  =  {R30:.4f} m")
+    print(f"  ✅ Range @ 60°  =  {R60:.4f} m")
+    if abs(R30 - R60) < 0.01:
+        print("  ✅ VALIDATED: Complementary angles produce equal range!")
+    print("=" * 50)
+
+    ax.set_title('Projectile Motion — Test Cases (v₀ = 50 m/s)', fontsize=14, fontweight='bold')
+    ax.set_xlabel('Horizontal Distance (m)', fontsize=12)
+    ax.set_ylabel('Vertical Height (m)', fontsize=12)
+    ax.legend(fontsize=10)
+    ax.grid(True, linestyle='--', alpha=0.6)
+    ax.set_xlim(left=0)
+    ax.set_ylim(bottom=0)
+
+    plt.tight_layout()
+    plt.savefig('test_cases.png', dpi=150, bbox_inches='tight')
+    plt.show()
+    print("  [INFO] Test case plot saved as 'test_cases.png'")
+
+# =============================================================================
+# MAIN — Entry Point
+# =============================================================================
+def main():
+    # --- Interactive Simulation ---
+    v0, angle_deg = get_user_input()
+
+    # Compute parameters
+    vx, vy, T, H, R = compute_parameters(v0, angle_deg)
+
+    # Print results
+    print_results(v0, angle_deg, T, H, R)
+
+    # Compute and plot trajectory
+    t, x, y = compute_trajectory(vx, vy, T)
+    plot_trajectory(x, y, v0, angle_deg, H, R)
+
+    # --- Run Test Cases ---
+    run_test = input("\n  Run predefined test cases? (y/n): ").strip().lower()
+    if run_test == 'y':
+        run_test_cases()
+
+if __name__ == "__main__":
+    main()
