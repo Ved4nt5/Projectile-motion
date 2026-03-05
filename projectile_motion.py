@@ -557,37 +557,54 @@ def mode4_air_resistance():
 # =============================================================================
 # MODE 5 — Varying Mass Projectile Motion
 # Euler integration: thrust applied along launch direction during burn phase;
-# ballistic flight (no thrust, constant mass) after burn.
+# ballistic flight after burn.  Multi-panel animation with live telemetry,
+# colour-coded phase trails, exhaust-flame effect, and speed/mass sub-charts.
 # =============================================================================
 def mode5_varying_mass():
+    # =========================================================================
+    # INPUT — press Enter on any field to accept the shown default value
+    # =========================================================================
     print("=" * 50)
     print("     VARYING MASS PROJECTILE MOTION")
     print("=" * 50)
-    v0       = float(input("Enter Initial Velocity (m/s)           : "))
-    angle    = float(input("Enter Launch Angle (degrees)           : "))
-    m0       = float(input("Enter Initial Mass m0 (kg)             : "))
-    dm_dt    = float(input("Enter Mass Loss Rate dm/dt (kg/s)      : "))
-    t_burn   = float(input("Enter Burn Duration t_burn (s)         : "))
-    F_thrust = float(input("Enter Thrust Force F_thrust (N)        : "))
+    print("  Preset defaults (press Enter to accept):")
+    print("    v₀=50 m/s  θ=75°  m₀=10 kg  ṁ=0.5 kg/s")
+    print("    t_burn=5 s  F_thrust=150 N")
+    print("-" * 50)
+    v0       = float(input("Enter Initial Velocity (m/s)         [50]  : ").strip() or "50")
+    angle    = float(input("Enter Launch Angle (degrees)         [75]  : ").strip() or "75")
+    m0       = float(input("Enter Initial Mass m0 (kg)           [10]  : ").strip() or "10")
+    dm_dt    = float(input("Enter Mass Loss Rate dm/dt (kg/s)   [0.5]  : ").strip() or "0.5")
+    t_burn   = float(input("Enter Burn Duration t_burn (s)        [5]  : ").strip() or "5")
+    F_thrust = float(input("Enter Thrust Force F_thrust (N)     [150]  : ").strip() or "150")
 
-    theta_r = np.radians(angle)
-    vx_now  = v0 * np.cos(theta_r)
-    vy_now  = v0 * np.sin(theta_r)
+    # Warn when the fuel budget exceeds initial mass
+    if dm_dt > 0 and dm_dt * t_burn >= m0:
+        print(f"  [WARNING] dm/dt × t_burn = {dm_dt * t_burn:.2f} kg ≥ m₀ = {m0:.2f} kg.")
+        print(f"            Burn will cut off automatically when mass → 0.")
 
-    # Euler integration
+    # =========================================================================
+    # EULER INTEGRATION — track position, velocity, and mass at every step
+    # =========================================================================
+    theta_r  = np.radians(angle)
+    vx_now   = v0 * np.cos(theta_r)
+    vy_now   = v0 * np.sin(theta_r)
+
     dt = 0.001
     xs, ys, ts = [0.0], [0.0], [0.0]
     vxs, vys   = [vx_now], [vy_now]
+    masses     = [m0]
 
     while ys[-1] >= 0:
         t_now = ts[-1]
         if t_now <= t_burn:
             # Burn phase: decreasing mass, thrust along launch direction
-            mass = max(m0 - dm_dt * t_now, 1e-6)   # prevent zero/negative mass
+            mass = max(m0 - dm_dt * t_now, 1e-6)
             ax_  = (F_thrust * np.cos(theta_r)) / mass
             ay_  = -g + (F_thrust * np.sin(theta_r)) / mass
         else:
-            # Ballistic phase: no thrust
+            # Ballistic phase: no thrust, constant residual mass
+            mass = max(m0 - dm_dt * t_burn, 1e-6)
             ax_, ay_ = 0.0, -g
 
         vx_now += ax_ * dt
@@ -597,19 +614,24 @@ def mode5_varying_mass():
         ts.append(t_now + dt)
         vxs.append(vx_now)
         vys.append(vy_now)
+        masses.append(mass)
         if ts[-1] > 1000:   # safety break
             break
 
-    x          = np.array(xs)
-    y          = np.array(ys)
-    t          = np.array(ts)
-    velocities = np.sqrt(np.array(vxs)**2 + np.array(vys)**2)
+    x        = np.array(xs)
+    y        = np.array(ys)
+    t        = np.array(ts)
+    speeds   = np.sqrt(np.array(vxs)**2 + np.array(vys)**2)
+    mass_arr = np.array(masses)
 
     T      = float(t[-1])
     H      = float(np.max(y))
     R      = float(x[-1])
-    v_peak = float(np.max(velocities))
+    v_peak = float(np.max(speeds))
 
+    # =========================================================================
+    # PRINT RESULTS
+    # =========================================================================
     print("\n" + "=" * 50)
     print("         SIMULATION RESULTS")
     print("=" * 50)
@@ -626,69 +648,225 @@ def mode5_varying_mass():
     print(f"  Peak Velocity      :  {v_peak:.4f} m/s")
     print("=" * 50)
 
-    # Downsample for smooth animation
-    stride = max(1, len(x) // 200)
-    x_anim = x[::stride]
-    y_anim = y[::stride]
-    t_anim = t[::stride]
+    # =========================================================================
+    # BUILD ANIMATION ARRAYS — downsample to ~300 frames for smooth playback
+    # =========================================================================
+    stride    = max(1, len(x) // 300)
+    x_anim    = x[::stride]
+    y_anim    = y[::stride]
+    t_anim    = t[::stride]
+    spd_anim  = speeds[::stride]
+    mass_anim = mass_arr[::stride]
+    n_frames  = len(x_anim)
 
-    # -------------------------------------------------------------------------
-    # ANIMATION: varying mass mode
-    # -------------------------------------------------------------------------
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.set_xlim(0, max(R * 1.05, 1.0))
-    ax.set_ylim(0, max(H * 1.25, 1.0))
+    # Index in each array where the coast phase begins
+    bi_full = int(np.searchsorted(t, t_burn))                          # full array index
+    bi_a    = min(int(np.searchsorted(t_anim, t_burn)), n_frames - 1)  # animation array index
 
-    # Static reference trajectory
-    ax.plot(x, y, color='royalblue', linewidth=1.5,
-            linestyle='--', alpha=0.3, label='Full trajectory (reference)')
+    # Exhaust-flame length: ~4.5 % of the larger plot dimension for clear visibility
+    flame_scale = max(R, H) * 0.045
 
-    # Mark burn-out point
-    burn_end_idx = int(np.searchsorted(t, t_burn))
-    if burn_end_idx < len(x):
-        ax.plot(x[burn_end_idx], y[burn_end_idx], 'y*', markersize=12,
-                label=f'Burn-out  t = {t_burn:.1f} s')
+    # =========================================================================
+    # FIGURE — 3-panel layout: trajectory (left) + speed & mass charts (right)
+    # =========================================================================
+    fig = plt.figure(figsize=(14, 8))
+    gs  = fig.add_gridspec(2, 2, width_ratios=[2, 1], hspace=0.42, wspace=0.32)
+    ax_traj = fig.add_subplot(gs[:, 0])   # full-height left panel: trajectory
+    ax_vel  = fig.add_subplot(gs[0, 1])   # top-right: speed vs time
+    ax_mass = fig.add_subplot(gs[1, 1])   # bottom-right: mass vs time
 
-    ax.plot(0, 0, 'go', markersize=9, label='Launch (0, 0)')
-    ax.plot(R, 0, 'bs', markersize=9, label=f'Landing  R = {R:.2f} m')
-    peak_idx = int(np.argmax(y))
-    ax.plot(x[peak_idx], y[peak_idx], 'r^', markersize=9,
-            label=f'Max Height  H = {H:.2f} m')
-    ax.annotate(f'  H = {H:.2f} m',
-                xy=(x[peak_idx], y[peak_idx]), fontsize=9, color='red')
-
-    trail_line,     = ax.plot([], [], color='royalblue', linewidth=2.5,
-                               label='Path')
-    projectile_dot, = ax.plot([], [], 'o', color='darkorange',
-                               markersize=12, label='Projectile', zorder=5)
-    time_text = ax.text(0.02, 0.95, '', transform=ax.transAxes,
-                        fontsize=10, color='dimgray', va='top')
-
-    ax.set_title(
+    fig.suptitle(
         f'Varying Mass Projectile Motion\n'
-        f'(v₀ = {v0} m/s, θ = {angle}°, m₀ = {m0} kg)',
-        fontsize=14, fontweight='bold')
-    ax.set_xlabel('Horizontal Distance (m)', fontsize=12)
-    ax.set_ylabel('Vertical Height (m)', fontsize=12)
-    ax.legend(fontsize=9, loc='upper right')
-    ax.grid(True, linestyle='--', alpha=0.6)
-    plt.tight_layout()
+        f'v₀={v0} m/s  |  θ={angle}°  |  m₀={m0} kg  |  '
+        f'ṁ={dm_dt} kg/s  |  t_burn={t_burn} s  |  F={F_thrust} N',
+        fontsize=11, fontweight='bold'
+    )
 
+    # ─── Trajectory panel ────────────────────────────────────────────────────
+    ax_traj.set_xlim(0, max(R * 1.08, 1.0))
+    ax_traj.set_ylim(0, max(H * 1.30, 1.0))
+    ax_traj.set_xlabel('Horizontal Distance (m)', fontsize=11)
+    ax_traj.set_ylabel('Vertical Height (m)', fontsize=11)
+    ax_traj.set_title('Trajectory', fontsize=11, fontweight='bold')
+    ax_traj.grid(True, linestyle='--', alpha=0.5)
+
+    # Faint full reference paths, colour-coded by phase
+    ax_traj.plot(x[:bi_full+1], y[:bi_full+1],
+                 color='orangered', linewidth=1.2, linestyle='--', alpha=0.22)
+    ax_traj.plot(x[bi_full:],   y[bi_full:],
+                 color='royalblue', linewidth=1.2, linestyle='--', alpha=0.22)
+
+    # Key static markers
+    ax_traj.plot(0, 0, 'go', markersize=9, label='Launch')
+    ax_traj.plot(R, 0, 'bs', markersize=9, label=f'Landing  R = {R:.1f} m')
+    peak_idx = int(np.argmax(y))
+    ax_traj.plot(x[peak_idx], y[peak_idx], 'r^', markersize=9,
+                 label=f'Apogee  H = {H:.1f} m')
+    ax_traj.annotate(f' H = {H:.1f} m',
+                     xy=(x[peak_idx], y[peak_idx]), fontsize=9, color='red')
+    if bi_full < len(x):
+        ax_traj.plot(x[bi_full], y[bi_full], 'y*', markersize=14, zorder=6,
+                     label=f'Burn-out  t = {t_burn:.1f} s')
+        ax_traj.annotate(' Burn-out',
+                         xy=(x[bi_full], y[bi_full]), fontsize=8, color='goldenrod')
+    ax_traj.legend(fontsize=8, loc='upper right')
+
+    # Animated trajectory elements
+    burn_trail,  = ax_traj.plot([], [], color='orangered', linewidth=2.5)
+    coast_trail, = ax_traj.plot([], [], color='royalblue', linewidth=2.5)
+    proj_dot,    = ax_traj.plot([], [], 'o', color='darkorange',
+                                markersize=13, zorder=7)
+    # Exhaust-flame plume (two overlapping lines: bright core + soft glow)
+    flame_core, = ax_traj.plot([], [], '-', color='gold',
+                               linewidth=4, alpha=0.90, zorder=6)
+    flame_glow, = ax_traj.plot([], [], '-', color='orangered',
+                               linewidth=8, alpha=0.40, zorder=5)
+
+    # Live telemetry box (monospace for column alignment)
+    tele_text = ax_traj.text(
+        0.03, 0.38, '', transform=ax_traj.transAxes,
+        fontsize=9, va='top', family='monospace',
+        bbox=dict(boxstyle='round,pad=0.5', facecolor='lightyellow',
+                  edgecolor='gray', alpha=0.88)
+    )
+
+    # ─── Speed panel ─────────────────────────────────────────────────────────
+    ax_vel.set_xlim(0, T * 1.05)
+    ax_vel.set_ylim(0, v_peak * 1.20)
+    ax_vel.set_xlabel('Time (s)', fontsize=9)
+    ax_vel.set_ylabel('Speed (m/s)', fontsize=9)
+    ax_vel.set_title('Speed vs Time', fontsize=10, fontweight='bold')
+    ax_vel.grid(True, linestyle='--', alpha=0.5)
+    # Orange shading marks the burn zone
+    ax_vel.axvspan(0, min(t_burn, T), alpha=0.09, color='orangered',
+                   label='Burn zone')
+    # Faint full-run reference curves
+    ax_vel.plot(t[:bi_full+1], speeds[:bi_full+1],
+                color='orangered', linewidth=1.0, alpha=0.22)
+    ax_vel.plot(t[bi_full:], speeds[bi_full:],
+                color='royalblue', linewidth=1.0, alpha=0.22)
+    ax_vel.legend(fontsize=7, loc='upper right')
+    # Animated: growing speed lines + current-position dot
+    vel_burn_line,  = ax_vel.plot([], [], color='orangered', linewidth=1.8)
+    vel_coast_line, = ax_vel.plot([], [], color='royalblue', linewidth=1.8)
+    vel_dot,        = ax_vel.plot([], [], 'o', color='darkorange',
+                                  markersize=7, zorder=5)
+
+    # ─── Mass panel ──────────────────────────────────────────────────────────
+    m_final = float(mass_arr[-1])
+    ax_mass.set_xlim(0, T * 1.05)
+    ax_mass.set_ylim(max(m_final * 0.82, 0), m0 * 1.12)
+    ax_mass.set_xlabel('Time (s)', fontsize=9)
+    ax_mass.set_ylabel('Mass (kg)', fontsize=9)
+    ax_mass.set_title('Mass vs Time', fontsize=10, fontweight='bold')
+    ax_mass.grid(True, linestyle='--', alpha=0.5)
+    ax_mass.axvspan(0, min(t_burn, T), alpha=0.09, color='orangered')
+    # Faint full-run reference curves
+    ax_mass.plot(t[:bi_full+1], mass_arr[:bi_full+1],
+                 color='orangered', linewidth=1.0, alpha=0.22)
+    ax_mass.plot(t[bi_full:], mass_arr[bi_full:],
+                 color='steelblue',  linewidth=1.0, alpha=0.22)
+    # Animated: growing mass lines + current-position dot
+    mass_burn_line,  = ax_mass.plot([], [], color='orangered', linewidth=1.8)
+    mass_coast_line, = ax_mass.plot([], [], color='steelblue',  linewidth=1.8)
+    mass_dot,        = ax_mass.plot([], [], 'o', color='darkorange',
+                                    markersize=7, zorder=5)
+
+    plt.tight_layout(rect=[0, 0, 1, 0.93])   # leave room for suptitle
+
+    # =========================================================================
+    # ANIMATION CALLBACKS
+    # blit=False is required here: blit=True only redraws one axis's background,
+    # so artists on the velocity and mass sub-panels would not update correctly.
+    # =========================================================================
     def init():
-        trail_line.set_data([], [])
-        projectile_dot.set_data([], [])
-        time_text.set_text('')
-        return trail_line, projectile_dot, time_text
+        burn_trail.set_data([], [])
+        coast_trail.set_data([], [])
+        proj_dot.set_data([], [])
+        flame_core.set_data([], [])
+        flame_glow.set_data([], [])
+        tele_text.set_text('')
+        vel_burn_line.set_data([], [])
+        vel_coast_line.set_data([], [])
+        vel_dot.set_data([], [])
+        mass_burn_line.set_data([], [])
+        mass_coast_line.set_data([], [])
+        mass_dot.set_data([], [])
+        return (burn_trail, coast_trail, proj_dot, flame_core, flame_glow,
+                tele_text, vel_burn_line, vel_coast_line, vel_dot,
+                mass_burn_line, mass_coast_line, mass_dot)
 
     def update(i):
-        trail_line.set_data(x_anim[:i+1], y_anim[:i+1])
-        projectile_dot.set_data([x_anim[i]], [y_anim[i]])
-        time_text.set_text(f'Time: {t_anim[i]:.2f} s')
-        return trail_line, projectile_dot, time_text
+        t_now    = t_anim[i]
+        x_now    = x_anim[i]
+        y_now    = y_anim[i]
+        spd_now  = spd_anim[i]
+        mass_now = mass_anim[i]
+        in_burn  = (t_now <= t_burn)
+
+        # ── Colour-coded trajectory trails ──
+        if i <= bi_a:
+            burn_trail.set_data(x_anim[:i+1],     y_anim[:i+1])
+            coast_trail.set_data([], [])
+        else:
+            burn_trail.set_data(x_anim[:bi_a+1],   y_anim[:bi_a+1])
+            coast_trail.set_data(x_anim[bi_a:i+1], y_anim[bi_a:i+1])
+
+        # ── Projectile dot (colour flips with phase) ──
+        proj_dot.set_data([x_now], [y_now])
+        proj_dot.set_markerfacecolor('orangered' if in_burn else 'royalblue')
+
+        # ── Exhaust-flame plume (only visible during burn) ──
+        if in_burn and flame_scale > 0:
+            fx = x_now - flame_scale * np.cos(theta_r)
+            fy = y_now - flame_scale * np.sin(theta_r)
+            flame_core.set_data([x_now, fx], [y_now, fy])
+            flame_glow.set_data([x_now, fx], [y_now, fy])
+        else:
+            flame_core.set_data([], [])
+            flame_glow.set_data([], [])
+
+        # ── Live telemetry box ──
+        # Trailing space on 'BURN ' keeps both labels at 5 chars so the
+        # monospace columns stay aligned regardless of phase.
+        phase_str = 'BURN ' if in_burn else 'COAST'
+        tele_text.set_text(
+            f'Phase  : {phase_str}\n'
+            f'Time   : {t_now:>6.2f} s\n'
+            f'Speed  : {spd_now:>6.1f} m/s\n'
+            f'Alt    : {y_now:>6.1f} m\n'
+            f'Mass   : {mass_now:>6.2f} kg'
+        )
+        # Box background colour flips with phase
+        bbox_patch = tele_text.get_bbox_patch()
+        if bbox_patch is not None:
+            bbox_patch.set_facecolor('#ffe8d6' if in_burn else '#d6e8ff')
+
+        # ── Speed subplot: growing lines + dot ──
+        if i <= bi_a:
+            vel_burn_line.set_data(t_anim[:i+1],     spd_anim[:i+1])
+            vel_coast_line.set_data([], [])
+        else:
+            vel_burn_line.set_data(t_anim[:bi_a+1],   spd_anim[:bi_a+1])
+            vel_coast_line.set_data(t_anim[bi_a:i+1], spd_anim[bi_a:i+1])
+        vel_dot.set_data([t_now], [spd_now])
+
+        # ── Mass subplot: growing lines + dot ──
+        if i <= bi_a:
+            mass_burn_line.set_data(t_anim[:i+1],     mass_anim[:i+1])
+            mass_coast_line.set_data([], [])
+        else:
+            mass_burn_line.set_data(t_anim[:bi_a+1],   mass_anim[:bi_a+1])
+            mass_coast_line.set_data(t_anim[bi_a:i+1], mass_anim[bi_a:i+1])
+        mass_dot.set_data([t_now], [mass_now])
+
+        return (burn_trail, coast_trail, proj_dot, flame_core, flame_glow,
+                tele_text, vel_burn_line, vel_coast_line, vel_dot,
+                mass_burn_line, mass_coast_line, mass_dot)
 
     ani = animation.FuncAnimation(
-        fig, update, frames=len(x_anim),
-        init_func=init, interval=20, blit=True, repeat=False
+        fig, update, frames=n_frames,
+        init_func=init, interval=20, blit=False, repeat=False
     )
     plt.show()
 
